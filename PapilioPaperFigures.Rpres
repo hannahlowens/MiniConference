@@ -1,0 +1,327 @@
+<style>
+.reveal h1, .reveal h2, .reveal h3 {
+  word-wrap: normal;
+  -webkit-hyphens: none;
+  -moz-hyphens: none;
+  hyphens: none;
+}
+
+.section .reveal .state-background{
+  background-color: GoldenRod;
+}
+
+</style>
+
+Butterfly Wing Shape Evolution
+========================================================
+date: `r format(Sys.Date(), "%d %B, %Y")`
+author: Hannah L. Owens
+autosize: true
+width: 1600
+height: 1200
+font-family: 'Futura'
+
+<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Pristine_Eastern_Tiger_Swallowtail.jpg/640px-Pristine_Eastern_Tiger_Swallowtail.jpg" style="width:50%; align:right;"></img>
+
+The Plan
+========================================================
+type: section  
+- Introduction to the study
+- The figure
+- Plotting in phylomorphospace
+
+The Plan
+========================================================
+type: section  
+- **Introduction to the Study**
+- The figure
+- Plotting in phylomorphospace
+
+Introduction to the Study
+========================================================
+incremental: false
+- What is known about butterfly wing shape?
+  + Wings are needed for flight
+  + BUT the forewing is most important
+  + Sexual selection or predation pressure may shape hindwings instead
+
+***
+<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/76/Black_Swallowtail%2C_male%2C_Ottawa.jpg/640px-Black_Swallowtail%2C_male%2C_Ottawa.jpg" style="height: 50%"></img>
+
+Introduction to the Study
+========================================================
+incremental: false
+- What is known about butterfly wing shape?
+- New World Swallowtail Butterflies
+  + Actually Americas + SE Asia
+  + 66 recognized species
+  + Some sexually dimorphic
+  + Some mimics
+  + Collected and landmarked 1449 of 60 species
+
+***
+<img src="SuppFig2.jpg" style="width: 100%"></img>
+
+Introduction to the Study
+========================================================
+incremental: false
+- What is known about butterfly wing shape?
+- New World Swallowtail Butterflies
+- HYPOTHESIS
+  + Forewing and hindwing shape are evolving independently
+
+***
+<img src="butterflyBauplan.png" style="width: 50%"></img>
+
+The Plan
+========================================================
+type: section
+
+- Introduction to the study
+- **The figure**
+- Plotting in phylomorphospace
+
+The Figure: The whole study in one place!
+========================================================
+type: section
+
+<img src="Figure2.png" style="margin-left: auto; margin-right: auto; background-color: white"></img>
+
+The Plan
+========================================================
+type: section
+
+- Introduction to the Study
+- The figure
+- **Plotting in Phylomorphospace**
+
+```{r setup, echo = FALSE, fig.show='hide'}
+library(geomorph)
+library(Evomorph)
+library(colorRamps)
+library(caper)
+library(geiger)
+library(phytools)
+
+setwd("~/Dropbox/LDGAnalysisAndPaper/LDGMorphologyProject/FinalResubmission/Appendices")
+phy <- read.tree("Appendix 1_DataForAnalysis/PapilioPhylogeny.nwk");
+sppList <- phy$tip.label;
+
+# Reading in Forewing Data
+coordsF <- readland.tps(file = "Appendix 1_DataForAnalysis/Forewing.tps", 
+                        specID = "ID", 
+                        readcurves = F, warnmsg = F);
+# Remove scale bar, known crummy landmark, species that are not found in the phylogeny
+coordsF <- coordsF[c(-1,-12:-13),,dimnames(coordsF)[[3]] %in% sppList] 
+# Remove species with < 10 specimens
+coordsF <- coordsF[,,!(dimnames(coordsF)[[3]] %in% 
+                         names(table(dimnames(coordsF)[[3]])[table(dimnames(coordsF)[[3]])
+                                                             <10]))] 
+# Landmark data Procrustes fit
+alignedF <- gpagen(coordsF, print.progress = F);
+
+#Plot outliers
+junk <- plotOutliers(alignedF$coords, inspect.outliers = FALSE)#Ordered list of indices of specimens by "outlierness"
+
+#Remove outliers (if necessary, i.e. red points
+coordsF <- coordsF[,,-junk[1:2]]
+alignedF <- gpagen(coordsF[,,], print.progress = F)
+rm(coordsF, junk)
+
+# Calculate mean forewing shape
+sppList <- unique(dimnames(alignedF$coords)[[3]])
+meanAlignF <- array(dim = c(10,2,length(sppList)));
+measurementCount <- NULL;
+for(i in 1:length(sppList)){
+  meanAlignF[,,i] <- mshape(alignedF$coords[,,dimnames(alignedF$coords)[[3]]==sppList[[i]]]);
+  measurementCount <- append(measurementCount,
+                             length(alignedF$coords[,,dimnames(alignedF$coords)[[3]]==
+                                                      sppList[[i]]])/20);
+}
+dimnames(meanAlignF)[[3]] <- sppList;
+meanF <- gpagen(meanAlignF[,,measurementCount>=10], print.progress = F);
+rm(measurementCount, meanAlignF, i)
+
+junk <- plotOutliers(meanF$coords, inspect.outliers = F)
+
+#Remove outliers (if necessary, i.e. red points
+meanAlignF <- meanF$coords[,,-junk[1]];
+meanF <- gpagen(meanAlignF, print.progress = F);
+rm(meanAlignF, junk)
+
+# Tidy up tree
+meanFphy <- drop.tip(phy, phy$tip[!phy$tip.label%in%dimnames(meanF$coords)[[3]]]);
+```
+
+Plotting in Phylomorphospace: Preparation
+========================================================
+left: 30%
+- Read in TPS file of forewing landmarks
+- Do Procrustes alignment of all specimens
+- Remove outliers and re-align
+- Calculate mean shape of each species
+- Remove outliers again
+- `plotTangentSpace()` gets us part way there
+
+***
+
+```{r plot tangent space, eval = T, echo=FALSE}
+#Plotting tangent space
+plotTangentSpace(meanF$coords)
+```
+
+Plotting in Phylomorphospace: The Main Function
+========================================================
+- `plotGMPhyloMorphoSpace()`
+  + Does a PCA on the multivariate dataset
+  + `fastAnc`-equivalent ancestral state reconstruction
+- _Caveat_: `plotGMPhyloMorphoSpace()` has been deprecated since then
+  + Now `gm.prcomp()` followed by `plot.gm.prcomp()`
+  
+***
+<img src="https://snappygoat.com/l/736cd92ae91be37a9efcbea41e868dc34a85b9fd/tools-do-it-yourself-hammer-498202.jpg" style="width: 100%"></img>
+
+Plotting in Phylomorphospace: First pass
+========================================================
+
+The raw output is kind of a hot mess.
+
+```{r basic phms plot, echo = T, eval=T, results = 'hide'}
+plotGMPhyloMorphoSpace(phy = meanFphy, A = meanF$coords)
+```
+
+Plotting in Phylomorphospace: Getting Rid of Noise
+========================================================
+
+A little better
+
+```{r phms plot without labels, echo = T, eval=T, results = 'hide'}
+plotGMPhyloMorphoSpace(phy = meanFphy, A = meanF$coords,
+                       tip.labels = F, node.labels = F) 
+```
+
+But how do we show whether or not clades are clustered?
+
+Plotting in Phylomorphospace: Coloring By Subgenera
+========================================================
+
+- 4 subgenera
+- Colors chosen to be colorblind-friendly
+  + `RColorBrewer::brewer.pal` is your friend!!
+- Color pairings emphasize biogeographic affinity
+- First, let's get it right on a simple phylogeny
+
+```{r plot phylogeny, echo=TRUE, eval = TRUE}
+col.gp <- c( "#5f3d98", "#fcb864", "#e56225", "#b2abd2") # Colors
+
+plot(meanFphy, tip.color=c(rep(col.gp[1], times = 16), 
+                      rep(col.gp[2], times = 6), 
+                      rep(col.gp[3], times = 1),
+                      rep(col.gp[4], times = 25)))
+legend(0, 48, legend= c("Pterourus", "Chilasa", "Alexanoria", "Heraclides"), pch=19,
+       col=col.gp, bty = "o")
+```
+
+Plotting in Phylomorphospace: Tips Colored by Subgenus
+========================================================
+
+- `plotGMPhyloMorphospace()` will take  additional plotting parameters!
+  + in the new `plot.gm.prcomp()`, this argument is named `phylo.par`
+
+```{r plot with colored tips, echo=TRUE, eval=TRUE, results = 'hide'}
+col.gp <- c( "#5f3d98", "#fcb864", "#e56225", "#b2abd2") # Colors
+
+plotGMPhyloMorphoSpace(phy = meanFphy, A = meanF$coords, 
+                       tip.labels = F, node.labels = F, 
+                       plot.param = list(t.bg=c(rep(col.gp[1], times = 16), 
+                                                rep(col.gp[2], times = 6), 
+                                                rep(col.gp[3], times = 1),
+                                                rep(col.gp[4], times = 25))))
+```
+
+Plotting in Phylomorphospace: Nodes Colored by Subgenus
+========================================================
+
+- Interior nodes come first
+  + Repeat interior color (number of clades - 1) times
+- Nodes within clades
+  + Repeat color (number of taxa - 1) times
+
+```{r plot with colored nodes, echo=TRUE, eval=TRUE, results = 'hide'}
+col.gp <- c( "#5f3d98", "#fcb864", "#e56225", "#b2abd2") # Colors
+
+plotGMPhyloMorphoSpace(phy = meanFphy, A = meanF$coords, 
+                       tip.labels = F, node.labels = F, 
+                       plot.param = list(t.bg=c(rep(col.gp[1], times = 16), 
+                                                rep(col.gp[2], times = 6), 
+                                                rep(col.gp[3], times = 1),
+                                                rep(col.gp[4], times = 25)),
+                                         n.cex = 1, n.bg = c(rep("black", 3),
+                                                        rep(unique(col.gp)[1], 15),
+                                                        rep(unique(col.gp)[2], 5),
+                                                        rep(unique(col.gp)[4], 24))))
+```
+
+Plotting in Phylomorphospace: Finally, a Legend
+========================================================
+
+- First two arguments are x and y coordinates on plot
+  + Just experiment until it looks good
+  + Or fix it in Illustrator later!
+
+```{r final plot code, echo=FALSE, eval = F, results = 'hide'}
+col.gp <- c( "#5f3d98", "#fcb864", "#e56225", "#b2abd2") # Colors
+
+plotGMPhyloMorphoSpace(phy = meanFphy, A = meanF$coords, 
+                       tip.labels = F, node.labels = F, 
+                       plot.param = list(t.bg=c(rep(col.gp[1], times = 16), 
+                                                rep(col.gp[2], times = 6), 
+                                                rep(col.gp[3], times = 1),
+                                                rep(col.gp[4], times = 25)),
+                                         n.cex = 1, n.bg = c(rep("black", 3),
+                                                        rep(unique(col.gp)[1], 15),
+                                                        rep(unique(col.gp)[2], 5),
+                                                        rep(unique(col.gp)[4], 24))));
+legend(-0.067, -0.02, legend= c("Pterourus", "Chilasa", "Alexanoria", "Heraclides"), pch=19,
+       col=col.gp, bty = "n")
+```
+
+
+Plotting in Phylomorphospace: Ta-da!
+========================================================
+```{r final plot figure, echo=FALSE, results = 'hide'}
+col.gp <- c( "#5f3d98", "#fcb864", "#e56225", "#b2abd2") # Colors
+
+plotGMPhyloMorphoSpace(phy = meanFphy, A = meanF$coords, 
+                       tip.labels = F, node.labels = F, 
+                       plot.param = list(t.bg=c(rep(col.gp[1], times = 16), 
+                                                rep(col.gp[2], times = 6), 
+                                                rep(col.gp[3], times = 1),
+                                                rep(col.gp[4], times = 25)),
+                                         n.cex = 1, n.bg = c(rep("black", 3),
+                                                        rep(unique(col.gp)[1], 15),
+                                                        rep(unique(col.gp)[2], 5),
+                                                        rep(unique(col.gp)[4], 24))));
+legend(-0.067, -0.02, legend= c("Pterourus", "Chilasa", "Alexanoria", "Heraclides"), pch=19,
+       col=col.gp, bty = "n")
+```
+
+Finishing
+========================================================
+type: section
+
+<img src="Figure2.png" style="margin-left: auto; margin-right: auto; background-color: white"></img>
+
+Questions?
+========================================================
+type: section
+
+Twitter handle: @HannahOish
+
+Image credit: Dave Taft via New York Times
+
+***
+
+<img src="https://static01.nyt.com/images/2016/06/12/nyregion/12NATURE/0612-superJumbo.jpg"></img>
+
+

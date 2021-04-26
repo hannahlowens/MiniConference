@@ -1,0 +1,269 @@
+---
+title: "Swallowtail Morphology"
+author: "Hannah Owens"
+date: "16 December, 2019"
+output:
+  pdf_document:
+    toc: yes
+  html_document:
+    code_folding: hide
+    df_print: paged
+    number_sections: yes
+    toc: yes
+    toc_float: yes
+  word_document:
+    toc: yes
+---
+
+```{r setup, include = FALSE}
+library(geomorph);
+library(Evomorph);
+library(colorRamps);
+library(caper);
+library(geiger);
+library(phytools);
+library(phylolm);
+library(rr2);
+library(MuMIn);
+knitr::opts_chunk$set(echo = TRUE);
+```
+
+# Reading in the data
+
+## Generating list of species of interest
+
+First I read in the phylogeny, from Owens, *et al.* 2017.
+
+```{r read in and plot the tree, results = "hide"}
+phy <- read.tree("Appendix 1_DataForAnalysis/PapilioPhylogeny.nwk");
+sppList <- phy$tip.label;
+```
+
+Next, gotta read in and clean those coordinates.
+
+## Reading in Forewing Data
+
+First, the forewing data get read in, and species represented by fewer than 10 specimens are removed.
+
+```{r read in forewing data, results = "hide"}
+coordsF <- readland.tps(file = "Appendix 1_DataForAnalysis/Forewing.tps", 
+                        specID = "ID", 
+                        readcurves = F);
+#Remove scale bar, known crummy landmark, species that are not found in the phylogeny
+coordsF <- coordsF[c(-1,-12:-13),,dimnames(coordsF)[[3]] %in% sppList] 
+#Remove species with < 10 specimens
+coordsF <- coordsF[,,!(dimnames(coordsF)[[3]] %in% 
+                         names(table(dimnames(coordsF)[[3]])[table(dimnames(coordsF)[[3]])
+                                                             <10]))] 
+```
+
+The forewing data is then aligned.
+
+```{r align forewing data, results = "hide"}
+#Landmark data Procrustes fit
+alignedF <- gpagen(coordsF, print.progress = F);
+summary(alignedF);
+```
+
+Next, outlier specimens are examined, and extreme outliers are removed (since these are likely erroneous).
+
+```{r get rid of forewing outliers}
+#Plot outliers
+junk <- plotOutliers(alignedF$coords)#Ordered list of indices of specimens by "outlierness"
+
+#Remove outliers (if necessary, i.e. red points
+coordsF <- coordsF[,,-junk[1:2]]
+alignedF <- gpagen(coordsF[,,], print.progress = F);
+rm(coordsF, junk);
+```
+Only chucking one *Chilasa agestor* and one *Chilasa paradoxa* at this point.
+
+Finally, here is the aligned forewing data.
+
+```{r check out the resulting forewing alignment}
+#Plot resulting data
+plot(alignedF);
+```
+
+And here is what a plot of all the forewing data look like, color-coded by species.
+
+```{r forewings in tangent space, fig.width = 7.5, fig.height = 7.5, results="hide"}
+#Plotting tangent space
+gp <- as.factor(dimnames(alignedF$coords)[[3]]); #Gets species IDs from landmark file
+col.gp <- primary.colors(length(levels(gp)), 
+                         steps = 5, 
+                         no.white = TRUE)#Gets colors to assign to species
+names(col.gp) <- levels(gp); #Assigns colors to names
+col.gp <- col.gp[match(gp, names(col.gp))]; #Assigns colors to individual points
+papTangentFAll <- plotTangentSpace(alignedF$coords, 
+                                label=NULL, 
+                                groups= col.gp, 
+                                legend = F); #Does the actual plotting
+rm(col.gp, gp)
+```
+
+## Reading in Hindwing Data
+
+First, the hindwing data get read in, and species represented by fewer than 10 specimens are removed.
+
+```{r read in hindwing data and remove species not represented in phylogeny, results = "hide"}
+coordsH <- readland.tps(file = "Appendix 1_DataForAnalysis/Hindwing.tps", specID = "ID", 
+                        readcurves = F);
+#Remove scale bar, species that are not found in the phylogeny
+coordsH <- coordsH[-13:-14,,dimnames(coordsH)[[3]] %in% unique(names(alignedF$Csize))] 
+#Remove species represented by fewer than 10 specimens
+coordsH <- coordsH[,,!(dimnames(coordsH)[[3]] %in%
+                         names(table(dimnames(coordsH)[[3]])[table(dimnames(coordsH)[[3]])
+                                                             <10]))] 
+```
+
+The hindwing data is then aligned.
+
+```{r clean and align hindwing data, results = "hide"}
+#Landmark data Procrustes fit
+alignedH <- gpagen(coordsH[,,], print.progress = F);
+summary(alignedH);
+rm(coordsH);
+```
+
+Next, outlier specimens are examined, and extreme outliers are removed (since these are likely erroneous).
+
+```{r get rid of hindwing outliers, results = "hide"}
+#Plot outliers
+junk <- plotOutliers(alignedH$coords)
+
+#Remove outliers
+alignedH <- gpagen(alignedH$coords[,,-junk[1]], print.progress = F);
+```
+One *Chilasa paradoxa* is a particularly distinct outlier and will be pitched.
+
+Finally, here is the aligned hindwing data.
+
+```{r check out the resulting hindwing alignment}
+#Plot resulting data
+plot(alignedH);
+rm(junk)
+```
+
+And here is what a plot of all the hindwing data look like, color-coded by species.
+
+```{r hindwings in tangent space, fig.width = 10, fig.height = 10, results="hide"}
+#Plotting tangent space
+gp <- as.factor(dimnames(alignedH$coords)[[3]]); #Gets species IDs from landmark file
+col.gp <- primary.colors(length(levels(gp)), steps = 5, no.white = TRUE)
+names(col.gp) <- levels(gp); #Assigns colors to names
+col.gp <- col.gp[match(gp, names(col.gp))]; #Assigns colors to individual points
+papTangentHAll <- plotTangentSpace(alignedH$coords, 
+                                label=NULL, 
+                                groups= col.gp, 
+                                legend = F); #Does the actual plotting
+rm(col.gp, gp);
+```
+
+## Checking allometries
+
+Before we get any farther, it would be good to check to make sure shape variance is not being complicated by centroid size.
+
+### Forewing
+
+```{r forewing allometry, results = "asis"}
+alignedFdFrame <- geomorph.data.frame(alignedF, species = dimnames(alignedF$coords)[[3]])
+temp <- procD.lm(f1 = coords ~ log(Csize)*species, data = alignedFdFrame,
+                 print.progress = F);
+summary(temp)
+gengp = c(24,24,21,24)
+plot(temp, type = "regression", predictor = log(alignedFdFrame$Csize), 
+     reg.type = "PredLine", 
+     pch = gengp[as.numeric(as.factor(substr(dimnames(alignedFdFrame$coords)[[3]],1,3)))],
+     bg = viridis::viridis(length(unique(alignedFdFrame$species)))[as.numeric(
+       as.factor(alignedFdFrame$species))], xlab = "log(CS)",
+     ylim = c(-.075,.15))
+legend(9.5,.15, legend = c("Heraclides", "Non-Heraclides"), pch = c(21,24), bty = "o", 
+       box.col = "gray")
+rm(temp, alignedFdFrame)
+```
+
+The relationship between forewing size and shape is different in each species (and species has a much stronger effect on shape than size), so we we cannot easily separate the two.
+
+### Hindwing
+```{r hindwing allometry, results = "asis"}
+alignedHdFrame <- geomorph.data.frame(alignedH, species = dimnames(alignedH$coords)[[3]]);
+temp <- procD.lm(f1 = coords ~ log(Csize)*species, data = alignedHdFrame,
+                 print.progress = F);
+summary(temp)
+gengp = c(24,24,21,24)
+plot(temp, type = "regression", predictor = log(alignedHdFrame$Csize), 
+     reg.type = "PredLine", 
+     pch = gengp[as.numeric(as.factor(substr(dimnames(alignedHdFrame$coords)[[3]],1,3)))], 
+     bg = viridis::viridis(length(unique(dimnames(alignedHdFrame$coords)[[3]])))[
+       as.numeric(as.factor(dimnames(alignedHdFrame$coords)[[3]]))], 
+     xlab = "log(CS)")
+legend(0.0295,-.12, legend = c("Heraclides", "Non-Heraclides"), pch = c(21,24), bty = "o", 
+       box.col = "gray")
+rm(temp, alignedHdFrame)
+```
+
+As with forewings, the relationship between forewing size and shape is different in each species (and species has a much stronger effect on shape than size), so we we cannot easily separate the two.
+
+## Calculating Mean Shape on a Per-Species Basis
+
+Next, I calculated mean shapes for every species, as these are more appropriate for some of the comparative phylogenetic analyses.
+
+### Forewing mean shape
+
+First, I calculate the mean forewing shape for each species, and count how many specimens went into each mean shape. I also verify that at this stage all species are still represented by at least 10 specimens, since some specimens were removed as statistical outliers in earlier dataset cleaning steps.
+
+```{r calculate mean forewing shape, results = "hide"}
+sppList <- unique(dimnames(alignedF$coords)[[3]])
+meanAlignF <- array(dim = c(10,2,length(sppList)));
+measurementCount <- NULL;
+for(i in 1:length(sppList)){
+  meanAlignF[,,i] <- mshape(alignedF$coords[,,dimnames(alignedF$coords)[[3]]==sppList[[i]]]);
+  measurementCount <- append(measurementCount,
+                             length(alignedF$coords[,,dimnames(alignedF$coords)[[3]]==
+                                                      sppList[[i]]])/20);
+}
+dimnames(meanAlignF)[[3]] <- sppList;
+meanF <- gpagen(meanAlignF[,,measurementCount>=10], print.progress = F);
+rm(measurementCount, meanAlignF, i)
+```
+
+Now I plot the outliers.
+
+```{r get rid of mean forewing shape outliers, results = "hide"}
+#Output will give you ordered list of indices of specimens
+junk <- plotOutliers(meanF$coords)
+
+#Remove outliers (if necessary, i.e. red points
+meanAlignF <- meanF$coords[,,-junk[1]];
+meanF <- gpagen(meanAlignF, print.progress = F);
+rm(meanAlignF, junk)
+```
+
+Ok. Only took out *Pterourus euterpinus*.
+
+And here is a plot of the results, color-coded by genus.
+
+```{r plotting mean forewing shape, fig.width = 7.5, fig.height = 7.5, results = "hide"}
+#Plotting tangent space
+meanFphy <- drop.tip(phy, phy$tip[!phy$tip.label%in%dimnames(meanF$coords)[[3]]]);
+
+# Assigning colors
+col.gp <- c( "#5f3d98", "#fcb864", "#e56225", "#b2abd2");
+
+#pdf("../Figures/ForewingPhyloMorphoSpace.pdf")
+plotGMPhyloMorphoSpace(phy = meanFphy, A = meanF$coords, 
+                       tip.labels = F, node.labels = F, 
+                       ancStates = F, shadow = T,
+                       plot.param = list(t.bg=c(rep(col.gp[1], times = 16), 
+                                                rep(col.gp[2], times = 6), 
+                                                rep(col.gp[3], times = 1),
+                                                rep(col.gp[4], times = 25)),
+                                         n.cex = 1, n.bg = c(rep("black", 3),
+                                                        rep(unique(col.gp)[1], 15),
+                                                        rep(unique(col.gp)[2], 5),
+                                                        rep(unique(col.gp)[4], 24))));
+legend(-0.067, -0.02, legend= c("Pterourus", "Chilasa", "Alexanoria", "Heraclides"), pch=19,
+       col=col.gp, bty = "n")
+#dev.off()
+```
